@@ -1,3 +1,19 @@
+# Author Taren Rohovit, July, 2021 tren63@gmail.com 
+#READ ME BEFORE USING THIS CODE
+# 1) make sure that you have all 4 libraries listed below installed (tidyr, ez, ggplot2, and dplyr)
+# 2) ensure you have a folder named "Output" stored on your desktop. This is where the output of this code will be stored
+# 3) ensure you have folders "pvalueArt" and "pvalueRad" on your desktop. These contain the data from experiment 1. email me if you're missing this
+# 4) ensure you have a folder named "RadData" on your desktop containg the data from the radiologists
+# 5) change the file path on code line 24 to your path
+# 6) change the file path on code line 57 to your path
+# 7) on code line 68 and 69 change the name of the file to what you named your eyetracking data
+# 8) on code lines 139-190 change the file path name to yours
+# 9) on code line 200 change the file path to yours
+# 10) on code line 264 change the file path to yours
+# 11) on lines 219-226 you're able to change which groups are compared against each other in the ANOVA
+# 12) on line 34 you will need to add the subject ID of each radiologist subject
+
+
 library(tidyr)
 library(ez)
 library(ggplot2)
@@ -21,20 +37,19 @@ nsubjects <- c(102,103,104,105,106,107,108,109)
 #Do analysis based on  these  conditions
 targetPresence <- c(0,1)
 imagetypes <- c("Radiograph","Perspective")
-dependants <- c("Correct","CURRENT_SAC_AMPLITUDE","trialRT","dprime") #"IA_FIRST_FIXATION_TIME"
+dependants <- c("Correct","CURRENT_SAC_AMPLITUDE","trialRT","IA_FIRST_FIXATION_TIME","Decision_Time")
 
 
 for (var in dependants) {
  
   for (pres in targetPresence){
     #first fixation is only relevant for target present trials
-   # if (pres == 0 && var == "IA_FIRST_FIXATION_TIME"){
-     # next()
-   # }
+    if (pres == 0 && (var == "IA_FIRST_FIXATION_TIME" || var =="Decision_Time")){
+      next()
+    }
     for (s in nsubjects){
       for(imageset in imagetypes){
-        
-        
+       
         #import data and combine behavioral data into a single data frame
         #CHANGE REQUIRED BY CURRENT USER
         #Edit this to where your file is stored
@@ -51,13 +66,16 @@ for (var in dependants) {
         }
         
         rawSacAmp <- read.table("sacamplituderadsthru8.txt", header = TRUE)
-        rawFirstFix <- read.table("ttffradsthru8.txt", header = TRUE)
+        rawFirstFix <- read.table("RadFirstFix.txt", header = TRUE)
         rawBehav <- rbind(rawBehav1,rawBehav2)
+        rawFirstFix <- filter(rawFirstFix, IA_LABEL == "TARGET_LOCATION")
+        
         #convert to double. Will result in some warnings of NAs being introduced. That's okay as long as there is only a few.
         rawSacAmp$CURRENT_SAC_AMPLITUDE <- as.double(rawSacAmp$CURRENT_SAC_AMPLITUDE)
+        rawFirstFix$IA_FIRST_FIXATION_TIME <- as.double(rawFirstFix$IA_FIRST_FIXATION_TIME)
         #remove NA
         rawSacAmp <- rawSacAmp[!is.na(rawSacAmp$CURRENT_SAC_AMPLITUDE),]
-        
+        rawFirstFix <- rawFirstFix[!is.na(rawFirstFix$IA_FIRST_FIXATION_TIME),]
         #filter image type to look at art and chest images separately 
         if (imageset == "Radiograph"){rawSacAmp <- filter(rawSacAmp, imageType == "chest")}
         if (imageset == "Perspective"){rawSacAmp <- filter(rawSacAmp, imageType == "art")}
@@ -79,37 +97,21 @@ for (var in dependants) {
         rawSacAmp <- filter(rawSacAmp, targetPresent== pres)
         rawBehav <- filter(rawBehav, targetPresent == pres)
         rawFirstFix <- filter(rawFirstFix, targetPresent == pres)
-        
+        #calculate time to first fixation and make a new column for it
+        rawFirstFix$IA_FIRST_FIXATION_TIME <- rawFirstFix$IA_FIRST_FIXATION_TIME /1000
+        rawFirstFix$trialRT <- rawFirstFix$trialRT/1000
+        rawFirstFix$Decision_Time <- (rawFirstFix$trialRT - rawFirstFix$IA_FIRST_FIXATION_TIME)
         
         #choose what data to analyze based on the current dependent variable 
-        if (var == "IA_FIRST_FIXATION_TIME"){currentData <- rawFirstFix}
+        if (var == "IA_FIRST_FIXATION_TIME" || var == "Decision_Time"){currentData <- rawFirstFix}
         if (var == "CURRENT_SAC_AMPLITUDE") {currentData <- rawSacAmp}
         if (var == "Correct" || var == "trialRT") {currentData <- rawBehav}
         if (var == "dprime") {currentData <- rawdprime}
        
        
         
-        if (var == "dprime"){
-          var <- "Correct"
-          
-          normvaluesPres <- filter(currentData, viewType == "Normal")
-          normvaluesPres <- filter(currentData, targetPresent == 1)
-          normvaluesPres <- normvaluesPres$Correct
-                                 
-          normzscorePres <- (normvaluesPres - mean(normvaluesPres))/sd(normvaluesPres)
-          normzscorePres <- scale(normvaluesPres)
-            
-          normvaluesAbs <- filter(currentData, viewType == "Normal")
-          normvaluesAbs <- filter(currentData, targetPresent == 0)
-          normvaluesAbs <- normvaluesPres$Correct
-          
-          normzscoreAbs <- (normvaluesAbs - mean(normvaluesAbs))/sd(normvaluesAbs)
-          
-          normdprime <- normzscorePres - normzscoreAbs
-          
-        }
-        
-        else{
+ 
+      
         #adds each new row to a formatted data frame
         toAdd <- data.frame("SID" = s, 
                             "Normal" = mean(as.double(currentData %>% 
@@ -122,7 +124,7 @@ for (var in dependants) {
                             "Group" = "Radiologist")
         #add new row to the accumulating data frame
         formatedData <- rbind(formatedData, toAdd)
-      }
+    
         #resets the adding row after each row is added
         toAdd <- NULL
       }
@@ -136,6 +138,20 @@ for (var in dependants) {
       if (var == "IA_FIRST_FIXATION_TIME"){
         artdata <-read.csv("C:/Users/Taren/Desktop/pvalueArt/FirstFix.csv")
         chestdata <-read.csv("C:/Users/Taren/Desktop/pvalueRad/FirstFix.csv")
+        ylabel <- "Time (s)"
+        artdata$Normal <- artdata$Normal /1000
+        artdata$GCV <- artdata$GCV /1000
+        chestdata$Normal <- chestdata$Normal /1000
+        chestdata$GCV <- chestdata$GCV / 1000
+      }
+      if (var == "Decision_Time"){
+        artdata <-read.csv("C:/Users/Taren/Desktop/pvalueArt/DesTime.csv")
+        chestdata <-read.csv("C:/Users/Taren/Desktop/pvalueRad/DesTime.csv")
+        ylabel <- "Time (s)"
+        artdata$Normal <- artdata$Normal /1000
+        artdata$GCV <- artdata$GCV /1000
+        chestdata$Normal <- chestdata$Normal /1000
+        chestdata$GCV <- chestdata$GCV / 1000
       }
       if (var == "CURRENT_SAC_AMPLITUDE") {
         artdata <-read.csv("C:/Users/Taren/Desktop/pvalueArt/SacAmpPres.csv")
@@ -196,13 +212,26 @@ for (var in dependants) {
     longNovRepArt <- gather(wideNovRepArt, viewType, var, c(Normal, GCV), factor_key=TRUE)
     longNovRepChest <- gather(wideNovRepChest, viewType, var, c(Normal, GCV), factor_key=TRUE)
     
+    longNovRepArt$SID <- as.factor(longNovRepArt$SID)
+    longNovRepChest$SID <- as.factor(longNovRepChest$SID)
+    
+    #Use these filters to control what groups are compared against each other in the ANOVA 
+    #The group that is uncommented is the one that is EXCLUDED from analysis.
+    #To change just comment and uncomment accordingly
+    #longNovRepArt <- filter(longNovRepArt, Group != "Naive")
+    #longNovRepArt <- filter(longNovRepArt, Group != "Architect")
+    longNovRepArt <- filter(longNovRepArt, Group != "Radiologist")
+    #longNovRepChest <- filter(longNovRepChest, Group != "Naive")
+    #longNovRepChest <- filter(longNovRepChest, Group != "Architect")
+    longNovRepChest <- filter(longNovRepChest, Group != "Radiologist")
+    
     #Does ANOVA on perspective images
-    print(paste(var, "Perspective"))
+    print(paste(outputname, var, "Perspective"))
     aov.NovRep = ezANOVA(data = longNovRepArt, dv = var, wid = SID, within = viewType, between = Group,
                          return_aov = FALSE)
     print(aov.NovRep,)
     #Does ANOVA on radiograph images
-    print(paste(var,"Radiograph"))
+    print(paste(outputname, var,"Radiograph"))
     aov.NovRep = ezANOVA(data = longNovRepChest, dv = var, wid = SID, within = viewType, between = Group,
                          return_aov = FALSE)
     print(aov.NovRep)
